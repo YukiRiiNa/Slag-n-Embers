@@ -70,9 +70,24 @@ public class DynamicPartItem extends Item implements IDynamicPart {
 
     @Override
     public @NotNull Component getName(ItemStack stack) {
-        var id = getDescriptionId(stack);
-        var name = id.split("\\.")[2];
-        return Component.translatableWithFallback(id, RegistrateLangProvider.toEnglishName(name));
+        var material = getMaterialType(stack).orElse(null);
+        var part = getPartType(stack).orElse(null);
+
+        // 如果材质和部件都存在，使用动态翻译键
+        if (material != null && part != null) {
+            // 材质键：例如 material.slag.copper -> "铜"
+            String materialKey = Util.makeDescriptionId("material", material.id);
+            // 部件键：例如 part.slag.helmet -> "头盔部件"
+            String partKey = Util.makeDescriptionId("part", part.id);
+
+            // 使用统一的格式化键进行拼接
+            // 注释：这样系统会查找 "item.slag.dynamic_part.name_format"，并传入翻译后的材质和部件
+            return Component.translatable("item.slag.dynamic_part.name_format",
+                    Component.translatable(materialKey),
+                    Component.translatable(partKey));
+        }
+
+        return super.getName(stack);
     }
 
     @SuppressWarnings("removal")

@@ -151,7 +151,8 @@ public class ModularItem extends Item implements IModularItem {
             var modularType = getModularTypeFromParts(parts);
             if (modularType != null) {
                 var count = modularType.getResultStack().getCount();
-                tooltip.add(Component.literal(RegistrateLangProvider.toEnglishName(modularType.id.getPath())).append(count > 1 ? " x" + count : "").withStyle(ChatFormatting.YELLOW));
+                // 修复：翻译即将组装的物品名称
+                tooltip.add(Component.translatable(net.minecraft.Util.makeDescriptionId("modular_type", modularType.id)).append(count > 1 ? " x" + count : "").withStyle(ChatFormatting.YELLOW));
                 tooltip.add(AllLangs.trArgs("construct", AllLangs.tr("shift"), AllLangs.tr("rmb")).withStyle(ChatFormatting.GRAY));
             }
 
@@ -159,15 +160,31 @@ public class ModularItem extends Item implements IModularItem {
             if (copyParts == null || copyParts.isEmpty()) return;
             var possibleModulars = parts.getPossibleModulars();
             if (modularType == null) {
-                if (!possibleModulars.isEmpty()) tooltip.add(Component.literal("Possible Items:").withStyle(ChatFormatting.GRAY));
-                for (var modular : possibleModulars) tooltip.add(Component.literal(" ").append(RegistrateLangProvider.toEnglishName(modular.id.getPath())).withStyle(ChatFormatting.GRAY));
+                // 修复：翻译 "Possible Items:"
+                if (!possibleModulars.isEmpty()) tooltip.add(Component.translatable("tooltip.slag.possible_items").withStyle(ChatFormatting.GRAY));
+                // 修复：翻译可能的物品列表
+                for (var modular : possibleModulars) tooltip.add(Component.literal(" ").append(Component.translatable(net.minecraft.Util.makeDescriptionId("modular_type", modular.id))).withStyle(ChatFormatting.GRAY));
             }
             var possibleParts = parts.getPossibleParts();
             if (!possibleParts.isEmpty() && !possibleModulars.isEmpty()) tooltip.add(Component.literal(" "));
-            if (!possibleParts.isEmpty()) tooltip.add(Component.literal("Possible Parts:").withStyle(ChatFormatting.GRAY));
+// 修复：翻译 "Possible Parts:"
+            if (!possibleParts.isEmpty()) tooltip.add(Component.translatable("tooltip.slag.possible_parts").withStyle(ChatFormatting.GRAY));
             for (var part : possibleParts) {
-                if (part instanceof ItemStack partStack) tooltip.add(Component.literal(" ").append(partStack.getHoverName()).append(" x" + partStack.getCount()).withStyle(ChatFormatting.GRAY));
-                if (part instanceof TagKey<?> partTag) tooltip.add(Component.literal(" " + RegistrateLangProvider.toEnglishName(Arrays.stream(partTag.location().toString().split("/")).toList().getLast())).withStyle(ChatFormatting.GRAY));
+                // 处理具体物品 (ItemStack)
+                if (part instanceof ItemStack partStack) {
+                    tooltip.add(Component.literal(" ").append(partStack.getHoverName()).append(" x" + partStack.getCount()).withStyle(ChatFormatting.GRAY));
+                }
+                // 处理标签类部件 (TagKey)
+                if (part instanceof TagKey<?> partTag) {
+                    // 获取标签路径的最后一段，例如 "hoe_heads" 或 "sword_blades"
+                    String tagName = Arrays.stream(partTag.location().getPath().split("/")).toList().getLast();
+                    // 组合成翻译键，例如 "tag.slag.part.hoe_heads"
+                    String tagTranslationKey = "tag.slag.part." + tagName;
+                    // 默认的英文回退文本
+                    String fallbackName = RegistrateLangProvider.toEnglishName(tagName);
+
+                    tooltip.add(Component.literal(" ").append(Component.translatableWithFallback(tagTranslationKey, fallbackName)).withStyle(ChatFormatting.GRAY));
+                }
             }
         }
         Level level = ctx.level();
@@ -216,11 +233,42 @@ public class ModularItem extends Item implements IModularItem {
 
     @Override
     public @NotNull Component getName(ItemStack stack) {
-        var id = getDescriptionId(stack);
-        var name = id.split("\\.")[2];
-        return Component.translatableWithFallback(id, RegistrateLangProvider.toEnglishName(name));
-    }
+        var modularTypeLoc = stack.get(AllDataComponents.MODULAR_TYPE);
 
+        // 修复：解耦材质与模块类型的翻译组合
+        if (modularTypeLoc != null) {
+            var parts = getParts(stack);
+            if (parts != null) {
+                var materialTypes = getMaterialTypes(parts);
+                if (!materialTypes.isEmpty()) {
+                    // 选取主材质（通常是第一个放入的部件材质）
+                    var primaryMaterial = materialTypes.get(0);
+
+                    String materialKey = net.minecraft.Util.makeDescriptionId("material", primaryMaterial.id);
+                    String typeKey = net.minecraft.Util.makeDescriptionId("modular_type", modularTypeLoc);
+
+                    var id = getDescriptionId(stack);
+                    var fallbackName = RegistrateLangProvider.toEnglishName(id.split("\\.")[2]);
+
+                    // 使用动态组装形式，确保支持多语言结构
+                    return Component.translatableWithFallback(
+                            "item.slag.modular.name_format",
+                            fallbackName,
+                            Component.translatable(materialKey),
+                            Component.translatable(typeKey)
+                    );
+                }
+            }
+        }
+
+        // 未组装完成的蓝图或无效物品的回退逻辑
+        var id = getDescriptionId(stack);
+        if (id.split("\\.").length > 2) {
+            var name = id.split("\\.")[2];
+            return Component.translatableWithFallback(id, RegistrateLangProvider.toEnglishName(name));
+        }
+        return super.getName(stack);
+    }
 
     public boolean isTool(ItemStack stack) {
         var modularType = getModularType(stack);
